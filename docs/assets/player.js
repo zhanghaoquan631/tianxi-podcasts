@@ -27,7 +27,7 @@ const follow = document.querySelector('#follow');
 const transcript = document.querySelector('.transcript ol');
 const rows = [...transcript.querySelectorAll('[data-time]')];
 const times = rows.map(row => Number(row.dataset.time));
-const positionKey = 'tianxi-podcasts:position:' + new URL(canonical).pathname;
+const positionKey = 'tianxi-podcasts:position:' + audio.dataset.positionPath;
 let active;
 let lastSave = -Infinity;
 

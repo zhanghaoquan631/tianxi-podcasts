@@ -1,6 +1,7 @@
 """Build the static program directory and stable, standalone episode pages."""
 
 import json
+import re
 from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -10,19 +11,30 @@ ROOT = Path(__file__).resolve().parent
 DOCS = ROOT / "docs"
 ORIGIN = "https://zhanghaoquan631.github.io/tianxi-podcasts/"
 PROGRAMS = json.loads((ROOT / "data" / "episodes.json").read_text(encoding="utf-8"))
+SHARE_IDS = json.loads((ROOT / "data" / "share-ids.json").read_text(encoding="utf-8"))
+
+if set(SHARE_IDS) != {program["id"] for program in PROGRAMS}:
+    raise ValueError("Each episode needs a persistent share ID in data/share-ids.json")
+if len(set(SHARE_IDS.values())) != len(SHARE_IDS) or any(
+    not re.fullmatch(r"[0-9a-f]{32}", share_id) for share_id in SHARE_IDS.values()
+):
+    raise ValueError("Episode share IDs must be unique 128-bit hexadecimal values")
+
+SHARE_PATHS = {slug: f"s/{share_id}/" for slug, share_id in SHARE_IDS.items()}
 
 
 def page(program, prefix):
     slug = program["id"]
     title = escape(program["title"])
-    canonical = ORIGIN + slug + "/"
+    canonical = ORIGIN + SHARE_PATHS[slug]
+    position_path = urlsplit(ORIGIN + slug + "/").path
     description = escape(program["introduction"], quote=True)
     audio = f"{prefix}media/{slug}.mp3"
     links = []
     for entry in PROGRAMS:
         current = ' aria-current="page"' if entry["id"] == slug else ""
         links.append(
-            f'<li><a href="{prefix}{entry["id"]}/"{current}>'
+            f'<li><a href="{prefix}{SHARE_PATHS[entry["id"]]}"{current}>'
             f'<span>{escape(entry["title"])}</span>'
             f'<small>{escape(entry["duration"])}</small></a></li>'
         )
@@ -60,7 +72,7 @@ def page(program, prefix):
   <meta property="og:description" content="{description}">
   <link rel="canonical" href="{canonical}">
   <link rel="stylesheet" href="{prefix}assets/programs.css">
-  <script defer src="{prefix}assets/player.js"></script>
+  <script defer src="{prefix}assets/player.js?v=share-links"></script>
   <title>{title} · 播客资料室</title>
 </head>
 <body>
@@ -87,7 +99,7 @@ def page(program, prefix):
         <p id="share-status" class="status" role="status"></p>
       </header>
       <section class="player" aria-label="节目播放">
-        <audio controls preload="metadata" aria-label="{title}">
+        <audio controls preload="metadata" aria-label="{title}" data-position-path="{position_path}">
           <source src="{audio}" type="audio/mpeg">
           <a href="{audio}">打开原声</a>
         </audio>
@@ -125,8 +137,10 @@ def page(program, prefix):
 
 
 for episode in PROGRAMS:
-    directory = DOCS / episode["id"]
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / "index.html").write_text(page(episode, "../"), encoding="utf-8")
+    slug = episode["id"]
+    for route, prefix in ((slug, "../"), (SHARE_PATHS[slug], "../../")):
+        directory = DOCS / route
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "index.html").write_text(page(episode, prefix), encoding="utf-8")
 
 (DOCS / "index.html").write_text(page(PROGRAMS[0], "./"), encoding="utf-8")
